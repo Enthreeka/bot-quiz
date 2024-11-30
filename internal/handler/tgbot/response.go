@@ -5,6 +5,7 @@ import (
 	store "github.com/Enthreeka/tg-bot-quiz/pkg/local_storage"
 	"github.com/Enthreeka/tg-bot-quiz/pkg/tg_bot_api/markup"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"strings"
 )
 
 const (
@@ -33,7 +34,12 @@ func (b *Bot) response(storeData *store.Data, update *tgbotapi.Update) {
 
 	text, markup := b.responseText(storeData)
 	if _, err := b.tgMsg.SendEditMessage(userID, storeData.CurrentMsgID, markup, text); err != nil {
-		b.log.Error("failed to send telegram message: ", err)
+		b.log.Error("failed to send edit telegram message in response: ", err)
+		if strings.Contains(err.Error(), "message to edit not found") {
+			if _, err = b.tgMsg.SendNewMessage(userID, markup, text); err != nil {
+				b.log.Error("failed to send new telegram message in response: ", err)
+			}
+		}
 	}
 }
 
@@ -44,7 +50,8 @@ func (b *Bot) responseText(storeData *store.Data) (string, *tgbotapi.InlineKeybo
 	case store.AdminDelete:
 		return success + "Пользователь лишился администраторских прав.", &markup.UserSetting
 	case store.QuizCreate:
-		return success, &markup.QuizSetting
+		m := markup.QuizSettingV2(int64(storeData.ChannelID))
+		return success, &m
 	case store.QuizUpdateAnswer, store.QuizUpdateImage, store.QuizUpdateQuestion, store.QuizUpdateOldAnswer:
 		question, err := b.quizService.GetQuestionByID(context.Background(), storeData.QuestionID)
 		if err != nil {

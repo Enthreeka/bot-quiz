@@ -40,7 +40,8 @@ func (e *Excel) GenerateUserResultsExcelFile(results []entity.UserResult, userna
 		"A1": "TG Username",
 		"B1": "User ID",
 		"C1": "Result ID",
-		"D1": "Total Points",
+		"D1": "Points",
+		"E1": "Question",
 	}
 
 	for cell, value := range headers {
@@ -52,7 +53,8 @@ func (e *Excel) GenerateUserResultsExcelFile(results []entity.UserResult, userna
 		f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), result.TGUsername)
 		f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), result.UserID)
 		f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), result.ID)
-		f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), result.TotalPoints)
+		f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), result.Points)
+		f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), result.QuestionName)
 	}
 
 	filename := fmt.Sprintf("contest_results.xlsx")
@@ -83,7 +85,7 @@ func (e *Excel) GenerateForUserResultsExcelFile(results []entity.UserResult, con
 
 	headers := map[string]string{
 		"A1": "TG Username",
-		"B1": "Total Points",
+		"B1": "Points",
 	}
 
 	for cell, value := range headers {
@@ -93,7 +95,7 @@ func (e *Excel) GenerateForUserResultsExcelFile(results []entity.UserResult, con
 	for i, result := range results {
 		row := i + 2
 		f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), result.TGUsername)
-		f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), result.TotalPoints)
+		f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), result.Points)
 	}
 
 	filename := fmt.Sprintf("contest_%d_results.xlsx", contestID)

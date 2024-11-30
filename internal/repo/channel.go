@@ -18,6 +18,7 @@ type ChannelRepo interface {
 	GetAllAdminChannel(ctx context.Context) ([]entity.Channel, error)
 	GetChannelIDByChannelName(ctx context.Context, channelName string) (int64, error)
 	GetByChannelName(ctx context.Context, channelName string) (*entity.Channel, error)
+	GetByChannelID(ctx context.Context, channelID int64) (*entity.Channel, error)
 	//GetChannelByUserID(ctx context.Context, userID int64) (string, error)
 }
 
@@ -62,6 +63,13 @@ func (u *channelRepo) GetByID(ctx context.Context, id int) (*entity.Channel, err
 	query := `select * from channel where id = $1`
 
 	row := u.Pool.QueryRow(ctx, query, id)
+	return u.collectRow(row)
+}
+
+func (u *channelRepo) GetByChannelID(ctx context.Context, channelID int64) (*entity.Channel, error) {
+	query := `select * from channel where tg_id = $1`
+
+	row := u.Pool.QueryRow(ctx, query, channelID)
 	return u.collectRow(row)
 }
 

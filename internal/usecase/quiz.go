@@ -19,9 +19,10 @@ type QuizService interface {
 	GetQuestionByID(ctx context.Context, id int) (*entity.Question, error)
 	UpdateQuestion(ctx context.Context, questionID int, question string) error
 	DeleteQuestion(ctx context.Context, id int) error
-	GetQuestionMarkup(ctx context.Context, method string) (*tgbotapi.InlineKeyboardMarkup, error)
+	GetQuestionMarkup(ctx context.Context, method string, channelID int) (*tgbotapi.InlineKeyboardMarkup, error)
 	UpdateImage(ctx context.Context, questionID int, image string) error
 	SetSendStatus(ctx context.Context, id int) error
+	GetChannelTgIDByQuestionID(ctx context.Context, questionID int) (int, error)
 
 	GetQuizByQuestionID(ctx context.Context, id int) (*entity.Quiz, error)
 	IsAnswerExists(ctx context.Context, questionID int) (bool, error)
@@ -29,8 +30,8 @@ type QuizService interface {
 
 	UpdateUserResult(ctx context.Context, answerID int, userID int64) (int, error)
 	CreateUserResult(ctx context.Context, userResult *entity.UserResult) error
-	GetAllUserResults(ctx context.Context) ([]entity.UserResult, error)
-	ResetAllUserResult(ctx context.Context) error
+	GetAllUserResultsByChannelID(ctx context.Context, channelID int) ([]entity.UserResult, error)
+	ResetAllUserResult(ctx context.Context, channelTgID int) error
 
 	CreateBooleanUserAnswer(ctx context.Context, answer *entity.IsUserAnswer) error
 	IsUserAnswerExists(ctx context.Context, userAnswer *entity.IsUserAnswer) (bool, error)
@@ -55,6 +56,10 @@ func NewQuizService(quizRepo repo.QuizRepo, log *logger.Logger) (QuizService, er
 		quizRepo: quizRepo,
 		log:      log,
 	}, nil
+}
+
+func (q *quizService) GetChannelTgIDByQuestionID(ctx context.Context, questionID int) (int, error) {
+	return q.quizRepo.GetChannelTgIDByQuestionID(ctx, questionID)
 }
 
 func (q *quizService) SetSendStatus(ctx context.Context, id int) error {
@@ -89,20 +94,20 @@ func (q *quizService) CreateUserResult(ctx context.Context, userResult *entity.U
 	return q.quizRepo.CreateUserResult(ctx, userResult)
 }
 
-func (q *quizService) GetAllUserResults(ctx context.Context) ([]entity.UserResult, error) {
-	return q.quizRepo.GetAllUserResults(ctx)
+func (q *quizService) GetAllUserResultsByChannelID(ctx context.Context, channelID int) ([]entity.UserResult, error) {
+	return q.quizRepo.GetAllUserResultsByChannelID(ctx, channelID)
 }
 
-func (q *quizService) ResetAllUserResult(ctx context.Context) error {
-	return q.quizRepo.ResetAllUserResult(ctx)
+func (q *quizService) ResetAllUserResult(ctx context.Context, channelTgID int) error {
+	return q.quizRepo.ResetAllUserResult(ctx, channelTgID)
 }
 
 func (q *quizService) CreateQuestion(ctx context.Context, tx pgx.Tx, question *entity.Question) (int, error) {
 	return q.quizRepo.CreateQuestion(ctx, tx, question)
 }
 
-func (q *quizService) GetQuestionMarkup(ctx context.Context, method string) (*tgbotapi.InlineKeyboardMarkup, error) {
-	questions, err := q.quizRepo.GetAllQuestions(ctx)
+func (q *quizService) GetQuestionMarkup(ctx context.Context, method string, channelID int) (*tgbotapi.InlineKeyboardMarkup, error) {
+	questions, err := q.quizRepo.GetAllQuestionsByChannelID(ctx, int64(channelID))
 	if err != nil {
 		q.log.Error("failed to get question markup: %v", err)
 		return nil, err
@@ -111,15 +116,16 @@ func (q *quizService) GetQuestionMarkup(ctx context.Context, method string) (*tg
 }
 
 func (q *quizService) UpdateUserResult(ctx context.Context, answerID int, userID int64) (int, error) {
-	costOfResponse, err := q.quizRepo.GetAnswerByID(ctx, answerID)
+	costOfResponse, questionID, err := q.quizRepo.GetAnswerByID(ctx, answerID)
 	if err != nil {
 		q.log.Error("failed to get answer: %v", err)
 		return 0, err
 	}
 
 	if err := q.quizRepo.CreateUserResult(ctx, &entity.UserResult{
-		UserID:      userID,
-		TotalPoints: costOfResponse,
+		UserID:     userID,
+		Points:     costOfResponse,
+		QuestionID: questionID,
 	}); err != nil {
 		q.log.Error("failed to create user result: %v", err)
 		return 0, err

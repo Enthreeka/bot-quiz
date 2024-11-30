@@ -10,6 +10,7 @@ type Question struct {
 	Deadline      *time.Time `json:"deadline"`
 	FileID        *string    `json:"file_id"`
 	IsSend        bool       `json:"is_send"`
+	ChannelID     int64      `json:"channel_tg_id"`
 }
 
 type Answer struct {
@@ -25,11 +26,14 @@ type QuestionsAnswers struct {
 }
 
 type UserResult struct {
-	ID          int   `json:"id"`
-	UserID      int64 `json:"user_id"`
-	TotalPoints int   `json:"total_points"`
+	ID         int   `json:"id"`
+	UserID     int64 `json:"user_id"`
+	Points     int   `json:"points"`
+	QuestionID int   `json:"questions_id"`
 
 	TGUsername string `json:"tg_username"`
+
+	QuestionName string `json:"question_name"`
 }
 
 type Quiz struct {

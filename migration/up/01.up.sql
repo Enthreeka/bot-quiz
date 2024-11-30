@@ -59,11 +59,14 @@ create table if not exists answers(
 
 create table if not exists user_results(
                                            id int generated always as identity,
-                                           user_id bigint unique,
-                                           total_points int,
+                                           user_id bigint,
+                                           points int,
+                                           questions_id int,
                                            primary key (id),
                                            foreign key (user_id)
-                                               references "user" (id) on delete cascade
+                                               references "user" (id) on delete cascade,
+                                           foreign key (questions_id)
+                                               references questions (id)
 );
 
 create table if not exists is_user_answer(
@@ -75,5 +78,34 @@ create table if not exists is_user_answer(
     foreign key (question_id)
         references questions (id) on delete cascade
 );
+
+
+
+-- new version
+alter table questions add column channel_tg_id bigint ;
+
+ALTER TABLE questions
+    ADD CONSTRAINT fk_channel
+        FOREIGN KEY (channel_tg_id) REFERENCES channel(tg_id) on delete cascade;
+
+
+alter table user_results add column questions_id int;
+
+ALTER TABLE user_results
+    ADD CONSTRAINT fk_questions
+        FOREIGN KEY (questions_id) REFERENCES questions(id) on delete cascade;
+
+
+ALTER TABLE user_results
+    rename column total_points to points;
+
+SELECT constraint_name
+FROM information_schema.table_constraints
+WHERE table_name = 'user_results' AND constraint_type = 'UNIQUE';
+
+ALTER TABLE user_results
+        DROP CONSTRAINT user_results_user_id_key;
+
+
 
 

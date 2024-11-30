@@ -15,8 +15,6 @@ import (
 	customMsg "github.com/Enthreeka/tg-bot-quiz/pkg/tg_bot_api"
 	"github.com/Enthreeka/tg-bot-quiz/pkg/tg_bot_api/markup"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"net/url"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -28,8 +26,9 @@ const (
 
 const jsonExample = "{\n \"варианты_ответы\": [\n  {\n   \"ответ\": \"Answer 123124\",\n   \"цена_ответа\": 10\n  },\n  {\n   \"ответ\": \"Answer e23fsdf\",\n   \"цена_ответа\": 20\n  },\n  {\n   \"ответ\": \"Answer 33249w8ueryfsd\",\n   \"цена_ответа\": 30\n  }\n ]\n}"
 
+const contextTimeout = 2 * time.Minute
+
 type CallbackQuiz interface {
-	CallbackShowQuizSetting() tgbot.ViewFunc
 	CallbackCreateQuizQuestion() tgbot.ViewFunc
 	CallbackListQuestion() tgbot.ViewFunc
 	CallbackDeleteQuestion() tgbot.ViewFunc
@@ -39,13 +38,16 @@ type CallbackQuiz interface {
 	CallbackCreateAnswer() tgbot.ViewFunc
 	CallbackUserResponse() tgbot.ViewFunc
 	CallbackSendQuizToChannel() tgbot.ViewFunc
-	CallbackShowChannels() tgbot.ViewFunc
 	CallbackAddImage() tgbot.ViewFunc
 	CallbackUpdateQuestion() tgbot.ViewFunc
 	CallbackCancelUpdate() tgbot.ViewFunc
 	CallbackUpdateAnswers() tgbot.ViewFunc
 	CallbackGetUserResultExcelFile() tgbot.ViewFunc
 	CallbackResetRating() tgbot.ViewFunc
+
+	//v2
+	CallbackGetChannelsV2() tgbot.ViewFunc
+	CallbackGetChannelSettingV2() tgbot.ViewFunc
 }
 
 type callbackQuiz struct {
@@ -96,26 +98,14 @@ func NewCallbackQuiz(
 	}, nil
 }
 
-// CallbackShowQuizSetting - quiz_setting
-func (c *callbackQuiz) CallbackShowQuizSetting() tgbot.ViewFunc {
-	return func(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update) error {
-
-		text := "Управление ботом"
-
-		if _, err := c.tgMsg.SendEditMessage(update.FromChat().ID,
-			update.CallbackQuery.Message.MessageID,
-			&markup.QuizSetting,
-			text); err != nil {
-			return err
-		}
-
-		return nil
-	}
-}
-
 // CallbackCreateQuizQuestion - create_question
 func (c *callbackQuiz) CallbackCreateQuizQuestion() tgbot.ViewFunc {
 	return func(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update) error {
+		id := GetThirdValue(update.CallbackData())
+		if id == 0 {
+			c.log.Error("GetThirdValue: failed to get id from  button")
+			return customErr.ErrNotFound
+		}
 
 		text := "Отправьте вопрос"
 		sentMsg, err := c.tgMsg.SendNewMessage(update.FromChat().ID,
@@ -130,22 +120,34 @@ func (c *callbackQuiz) CallbackCreateQuizQuestion() tgbot.ViewFunc {
 			CurrentMsgID:  sentMsg,
 			PreferMsgID:   update.CallbackQuery.Message.MessageID,
 			OperationType: store.QuizCreate,
+			ChannelID:     id,
 		}, update.FromChat().ID)
 
 		return nil
 	}
 }
 
-// CallbackListQuestion - list_question
+// CallbackListQuestion - list_question_{channel_id}
 func (c *callbackQuiz) CallbackListQuestion() tgbot.ViewFunc {
 	return func(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update) error {
+		id := GetThirdValue(update.CallbackData())
+		if id == 0 {
+			c.log.Error("GetThirdValue: failed to get id from  button")
+			return customErr.ErrNotFound
+		}
 
-		questionMarkup, err := c.quizService.GetQuestionMarkup(ctx, QuestionGET)
+		channel, err := c.channelService.GetByChannelID(ctx, int64(id))
+		if err != nil {
+			c.log.Error("GetThirdValue: failed to get channel from  button: %v", err)
+			return err
+		}
+
+		questionMarkup, err := c.quizService.GetQuestionMarkup(ctx, QuestionGET, id)
 		if err != nil {
 			return err
 		}
 
-		text := "Список вопросов"
+		text := "Список вопросов \nКанал: " + channel.ChannelName
 		_, err = c.tgMsg.SendEditMessage(update.FromChat().ID,
 			update.CallbackQuery.Message.MessageID,
 			questionMarkup,
@@ -161,8 +163,13 @@ func (c *callbackQuiz) CallbackListQuestion() tgbot.ViewFunc {
 // CallbackDeleteQuestion - delete_question
 func (c *callbackQuiz) CallbackDeleteQuestion() tgbot.ViewFunc {
 	return func(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update) error {
+		id := GetThirdValue(update.CallbackData())
+		if id == 0 {
+			c.log.Error("GetThirdValue: failed to get id from  button")
+			return customErr.ErrNotFound
+		}
 
-		questionMarkup, err := c.quizService.GetQuestionMarkup(ctx, QuestionDELETE)
+		questionMarkup, err := c.quizService.GetQuestionMarkup(ctx, QuestionDELETE, id)
 		if err != nil {
 			return err
 		}
@@ -195,8 +202,14 @@ func (c *callbackQuiz) CallbackGetQuestion() tgbot.ViewFunc {
 			return err
 		}
 
+		channel, err := c.channelService.GetByChannelID(ctx, question.ChannelID)
+		if err != nil {
+			c.log.Error("failed to get channel by id: %v", err)
+			return err
+		}
+
 		questionSetting := markup.QuestionSetting(id)
-		text := question.QuestionName
+		text := "Вопрос: " + question.QuestionName + "\n" + "Канал: " + channel.ChannelName
 		_, err = c.tgMsg.SendEditMessage(update.FromChat().ID,
 			update.CallbackQuery.Message.MessageID,
 			&questionSetting,
@@ -218,17 +231,27 @@ func (c *callbackQuiz) CallbackDeleteByIDQuestion() tgbot.ViewFunc {
 			return customErr.ErrNotFound
 		}
 
-		err := c.quizService.DeleteQuestion(ctx, id)
+		channelID, err := c.quizService.GetChannelTgIDByQuestionID(ctx, id)
+		if err != nil {
+			c.log.Error("failed to get channel by id: %v", err)
+			return err
+		}
+
+		err = c.quizService.DeleteQuestion(ctx, id)
 		if err != nil {
 			c.log.Error("failed to get question by id: %v", err)
 			return err
 		}
 
+		m := markup.QuizSettingV2(int64(channelID))
+
 		text := "Управление ботом"
-		if _, err := c.tgMsg.SendEditMessage(update.FromChat().ID,
+		if _, err := c.tgMsg.SendEditMessage(
+			update.FromChat().ID,
 			update.CallbackQuery.Message.MessageID,
-			&markup.QuizSetting,
-			text); err != nil {
+			&m,
+			text,
+		); err != nil {
 			return err
 		}
 
@@ -259,7 +282,7 @@ func (c *callbackQuiz) CallbackCheckQuiz() tgbot.ViewFunc {
 	}
 }
 
-// CallbackUpdateAnswer - add_answers
+// CallbackCreateAnswer - add_answers
 func (c *callbackQuiz) CallbackCreateAnswer() tgbot.ViewFunc {
 	return func(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update) error {
 		id := GetThirdValue(update.CallbackData())
@@ -309,7 +332,7 @@ func (c *callbackQuiz) CallbackCreateAnswer() tgbot.ViewFunc {
 	}
 }
 
-// CallbackUserResponse -  quiz_answer
+// CallbackUserResponse -  quiz_answer_{answer_id}
 func (c *callbackQuiz) CallbackUserResponse() tgbot.ViewFunc {
 	return func(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update) error {
 		id := GetThirdValue(update.CallbackData())
@@ -356,59 +379,13 @@ func (c *callbackQuiz) CallbackUserResponse() tgbot.ViewFunc {
 	}
 }
 
-// CallbackShowChannels - show_channels_{questionID}
-func (c *callbackQuiz) CallbackShowChannels() tgbot.ViewFunc {
-	return func(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update) error {
-		id := GetThirdValue(update.CallbackData())
-		if id == 0 {
-			c.log.Error("GetThirdValue: failed to get id from  button")
-			return nil
-		}
-
-		channelsButton, err := c.channelService.GetAllAdminChannel(ctx, id)
-		if err != nil {
-			c.log.Error("failed to get all admin channels: %v", err)
-			return err
-		}
-
-		text := "Выберите канал для отправки вопроса"
-		_, err = c.tgMsg.SendEditMessage(update.FromChat().ID,
-			update.CallbackQuery.Message.MessageID,
-			channelsButton,
-			text)
-		if err != nil {
-			c.log.Error("failed to send update result message: %v", err)
-			return err
-		}
-
-		return nil
-	}
-}
-
-// CallbackSendQuizToChannel - channel_get_{URLQuery}
+// CallbackSendQuizToChannel - send_question_{question_id}
 func (c *callbackQuiz) CallbackSendQuizToChannel() tgbot.ViewFunc {
 	return func(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update) error {
-		query := GetThirdValueString(update.CallbackData())
-		if query == "" {
+		questionID := GetThirdValue(update.CallbackData())
+		if questionID == 0 {
 			c.log.Error("GetThirdValue: failed to get id from  button")
-			return nil
-		}
-
-		urlValues, err := url.ParseQuery(query)
-		if err != nil {
-			c.log.Error("failed to parse url query: %v", err)
-			return err
-		}
-
-		questionID, err := strconv.Atoi(urlValues.Get("questionID"))
-		if err != nil {
-			c.log.Error("failed to parse questionID: %v", err)
-			return err
-		}
-		channelID, err := strconv.Atoi(urlValues.Get("channelID"))
-		if err != nil {
-			c.log.Error("failed to parse channelID: %v", err)
-			return err
+			return customErr.ErrNotFound
 		}
 
 		quiz, err := c.quizService.GetQuizByQuestionID(ctx, questionID)
@@ -417,17 +394,11 @@ func (c *callbackQuiz) CallbackSendQuizToChannel() tgbot.ViewFunc {
 			return err
 		}
 
-		channel, err := c.channelService.GetByID(ctx, channelID)
-		if err != nil {
-			c.log.Error("failed to get channel by id: %v", err)
+		if _, err = c.tgMsg.SendMessageToUser(quiz.Question.ChannelID, quiz); err != nil {
 			return err
 		}
 
-		if _, err = c.tgMsg.SendMessageToUser(channel.TgID, quiz); err != nil {
-			return err
-		}
-
-		if err = c.quizService.SetSendStatus(ctx, questionID); err != nil {
+		if err = c.quizService.SetSendStatus(ctx, quiz.Question.ID); err != nil {
 			c.log.Error("failed to set quiz status: %v", err)
 			return err
 		}
@@ -573,10 +544,16 @@ func (c *callbackQuiz) CallbackUpdateAnswers() tgbot.ViewFunc {
 	}
 }
 
-// CallbackGetUserResultExcelFile - downloading_rating
+// CallbackGetUserResultExcelFile - downloading_rating_{channel_id}
 func (c *callbackQuiz) CallbackGetUserResultExcelFile() tgbot.ViewFunc {
 	return func(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update) error {
-		userResult, err := c.quizService.GetAllUserResults(ctx)
+		channelID := GetThirdValue(update.CallbackData())
+		if channelID == 0 {
+			c.log.Error("GetThirdValue: failed to get id from  button")
+			return customErr.ErrNotFound
+		}
+
+		userResult, err := c.quizService.GetAllUserResultsByChannelID(ctx, channelID)
 		if err != nil {
 			c.log.Error("quizService.GetAllUserResults: failed to get contest: %v", err)
 			return err
@@ -613,18 +590,23 @@ func (c *callbackQuiz) CallbackGetUserResultExcelFile() tgbot.ViewFunc {
 	}
 }
 
-// CallbackResetRating - reset_rating
+// CallbackResetRating - reset_rating_{channel_id}
 func (c *callbackQuiz) CallbackResetRating() tgbot.ViewFunc {
 	return func(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update) error {
+		id := GetThirdValue(update.CallbackData())
+		if id == 0 {
+			c.log.Error("GetThirdValue: failed to get id from  button")
+			return customErr.ErrNotFound
+		}
 
-		err := c.quizService.ResetAllUserResult(ctx)
+		err := c.quizService.ResetAllUserResult(ctx, id)
 		if err != nil {
 			c.log.Error("failed to reset user result: %v", err)
 			return err
 		}
 
 		go func(bot *tgbotapi.BotAPI, update *tgbotapi.Update) {
-			newCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			newCtx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 			defer cancel()
 
 			if err = c.CallbackGetUserResultExcelFile()(newCtx, bot, update); err != nil {
@@ -632,6 +614,58 @@ func (c *callbackQuiz) CallbackResetRating() tgbot.ViewFunc {
 
 			}
 		}(bot, update)
+
+		return nil
+	}
+}
+
+// CallbackGetChannelsV2 - list_channelsv2
+func (c *callbackQuiz) CallbackGetChannelsV2() tgbot.ViewFunc {
+	return func(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update) error {
+		channelsButton, err := c.channelService.GetAllAdminChannel(ctx)
+		if err != nil {
+			c.log.Error("failed to get all admin channels: %v", err)
+			return err
+		}
+
+		text := "Выберите канал для управления вопросами"
+		_, err = c.tgMsg.SendEditMessage(update.FromChat().ID,
+			update.CallbackQuery.Message.MessageID,
+			channelsButton,
+			text)
+		if err != nil {
+			c.log.Error("failed to send update result message: %v", err)
+			return err
+		}
+
+		return nil
+	}
+}
+
+// CallbackGetChannelSettingV2 - channel_get_{channel_id}
+func (c *callbackQuiz) CallbackGetChannelSettingV2() tgbot.ViewFunc {
+	return func(ctx context.Context, bot *tgbotapi.BotAPI, update *tgbotapi.Update) error {
+		id := GetThirdValue(update.CallbackData())
+		if id == 0 {
+			c.log.Error("GetThirdValue: failed to get id from  button")
+			return customErr.ErrNotFound
+		}
+
+		ch, err := c.channelService.GetByChannelID(ctx, int64(id))
+		if err != nil {
+			c.log.Error("GetThirdValue: failed to get channel: %v", err)
+			return err
+		}
+
+		m := markup.QuizSettingV2(int64(id))
+		text := "Управление каналом: " + ch.ChannelName
+
+		if _, err := c.tgMsg.SendEditMessage(update.FromChat().ID,
+			update.CallbackQuery.Message.MessageID,
+			&m,
+			text); err != nil {
+			return err
+		}
 
 		return nil
 	}

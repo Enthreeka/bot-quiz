@@ -10,15 +10,16 @@ import (
 
 type QuizRepo interface {
 	CreateQuestion(ctx context.Context, tx pgx.Tx, question *entity.Question) (int, error)
-	GetAllQuestions(ctx context.Context) ([]entity.Question, error)
+	GetAllQuestionsByChannelID(ctx context.Context, channelID int64) ([]entity.Question, error)
 	GetQuestionByID(ctx context.Context, id int) (*entity.Question, error)
 	UpdateQuestion(ctx context.Context, questionID int, question string) error
 	DeleteQuestion(ctx context.Context, id int) error
 	UpdateImage(ctx context.Context, questionID int, image string) error
 	SetSendStatus(ctx context.Context, id int) error
+	GetChannelTgIDByQuestionID(ctx context.Context, questionID int) (int, error)
 
 	CreateAnswers(ctx context.Context, tx pgx.Tx, answers []entity.Answer, questionID int) ([]int, error)
-	GetAnswerByID(ctx context.Context, id int) (int, error)
+	GetAnswerByID(ctx context.Context, id int) (int, int, error)
 	GetQuizByQuestionID(ctx context.Context, id int) (*entity.Quiz, error)
 	UpdateAnswer(ctx context.Context, answer *entity.Answer) error
 	DeleteAnswer(ctx context.Context, tx pgx.Tx, id int) error
@@ -26,8 +27,8 @@ type QuizRepo interface {
 	DeleteAndInsertNewAnswers(ctx context.Context, answers []entity.Answer, questionID int) error
 
 	CreateUserResult(ctx context.Context, userResult *entity.UserResult) error
-	GetAllUserResults(ctx context.Context) ([]entity.UserResult, error)
-	ResetAllUserResult(ctx context.Context) error
+	GetAllUserResultsByChannelID(ctx context.Context, channelID int) ([]entity.UserResult, error)
+	ResetAllUserResult(ctx context.Context, channelTgID int) error
 
 	CreateBooleanUserAnswer(ctx context.Context, answer *entity.IsUserAnswer) error
 	IsUserAnswerExists(ctx context.Context, userAnswer *entity.IsUserAnswer) (bool, error)
@@ -48,6 +49,16 @@ func NewQuizRepo(pg *postgres.Postgres) (QuizRepo, error) {
 
 // Question domain
 
+func (q *quizRepo) GetChannelTgIDByQuestionID(ctx context.Context, questionID int) (int, error) {
+	query := `SELECT channel_tg_id FROM questions WHERE id = $1`
+	var (
+		channelTgId int
+	)
+
+	err := q.Pool.QueryRow(ctx, query, questionID).Scan(&channelTgId)
+	return channelTgId, err
+}
+
 func (q *quizRepo) SetSendStatus(ctx context.Context, id int) error {
 	query := `UPDATE questions SET is_send = true WHERE id = $1;`
 
@@ -56,23 +67,32 @@ func (q *quizRepo) SetSendStatus(ctx context.Context, id int) error {
 }
 
 func (q *quizRepo) CreateQuestion(ctx context.Context, tx pgx.Tx, question *entity.Question) (int, error) {
-	query := `INSERT INTO questions (created_by_user, question_name, file_id) VALUES ($1, $2, $3) RETURNING id`
+	query := `INSERT INTO questions (created_by_user, question_name, file_id, channel_tg_id) VALUES ($1, $2, $3, $4) RETURNING id`
 
 	var err error
 	var id int
 	if tx == nil {
-		err = q.Pool.QueryRow(ctx, query, question.CreatedByUser, question.QuestionName, question.FileID).Scan(&id)
+		err = q.Pool.QueryRow(ctx, query, question.CreatedByUser, question.QuestionName, question.FileID, question.ChannelID).Scan(&id)
 	} else {
-		err = tx.QueryRow(ctx, query, question.CreatedByUser, question.QuestionName, question.FileID).Scan(&id)
+		err = tx.QueryRow(ctx, query, question.CreatedByUser, question.QuestionName, question.FileID, question.ChannelID).Scan(&id)
 	}
 
 	return id, err
 }
 
-func (q *quizRepo) GetAllQuestions(ctx context.Context) ([]entity.Question, error) {
-	query := `SELECT id,created_by_user,created_at,question_name,file_id,deadline,is_send FROM questions`
+func (q *quizRepo) GetAllQuestionsByChannelID(ctx context.Context, channelID int64) ([]entity.Question, error) {
+	query := `SELECT 
+    id,
+    created_by_user,
+    created_at,
+    question_name,
+    file_id,
+    deadline,
+    is_send
+	FROM questions
+	WHERE channel_tg_id = $1`
 
-	rows, err := q.Pool.Query(ctx, query)
+	rows, err := q.Pool.Query(ctx, query, channelID)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +132,17 @@ func (q *quizRepo) UpdateImage(ctx context.Context, questionID int, image string
 }
 
 func (q *quizRepo) GetQuestionByID(ctx context.Context, id int) (*entity.Question, error) {
-	query := `SELECT id,created_by_user,created_at,question_name,file_id,deadline,is_send FROM questions WHERE id = $1`
+	query := `SELECT 
+    id,
+    created_by_user,
+    created_at,
+    question_name,
+    file_id,
+    deadline,
+    is_send,
+    channel_tg_id
+	FROM questions
+	WHERE id = $1`
 	question := new(entity.Question)
 
 	err := q.Pool.QueryRow(ctx, query, id).Scan(&question.ID,
@@ -121,7 +151,9 @@ func (q *quizRepo) GetQuestionByID(ctx context.Context, id int) (*entity.Questio
 		&question.QuestionName,
 		&question.FileID,
 		&question.Deadline,
-		&question.IsSend)
+		&question.IsSend,
+		&question.ChannelID,
+	)
 	return question, err
 }
 
@@ -202,16 +234,19 @@ func (q *quizRepo) CreateAnswers(ctx context.Context, tx pgx.Tx, answers []entit
 	return newID, nil
 }
 
-func (q *quizRepo) GetAnswerByID(ctx context.Context, id int) (int, error) {
-	query := `SELECT cost_of_response from answers WHERE id = $1`
-	var costOfResponse int
+func (q *quizRepo) GetAnswerByID(ctx context.Context, id int) (int, int, error) {
+	query := `SELECT cost_of_response,question_id from answers WHERE id = $1`
+	var (
+		costOfResponse int
+		questionID     int
+	)
 
-	err := q.Pool.QueryRow(ctx, query, id).Scan(&costOfResponse)
-	return costOfResponse, err
+	err := q.Pool.QueryRow(ctx, query, id).Scan(&costOfResponse, &questionID)
+	return costOfResponse, questionID, err
 }
 
 func (q *quizRepo) GetQuizByQuestionID(ctx context.Context, id int) (*entity.Quiz, error) {
-	queryQuestion := `SELECT question_name, file_id FROM questions WHERE id = $1`
+	queryQuestion := `SELECT question_name, file_id, channel_tg_id FROM questions WHERE id = $1`
 
 	queryAnswer := `SELECT a.id, a.answer, a.cost_of_response FROM answers a
 					JOIN questions q ON q.id = a.question_id
@@ -231,7 +266,11 @@ func (q *quizRepo) GetQuizByQuestionID(ctx context.Context, id int) (*entity.Qui
 	}()
 	qu := new(entity.Quiz)
 
-	if err = tx.QueryRow(ctx, queryQuestion, id).Scan(&qu.Question.QuestionName, &qu.Question.FileID); err != nil {
+	if err = tx.QueryRow(ctx, queryQuestion, id).Scan(
+		&qu.Question.QuestionName,
+		&qu.Question.FileID,
+		&qu.Question.ChannelID,
+	); err != nil {
 		return nil, err
 	}
 
@@ -283,19 +322,31 @@ func (q *quizRepo) DeleteAnswer(ctx context.Context, tx pgx.Tx, questionID int) 
 // User result entity
 
 func (q *quizRepo) CreateUserResult(ctx context.Context, userResult *entity.UserResult) error {
-	query := `INSERT INTO user_results (user_id,total_points) VALUES ($1, $2)
-			ON CONFLICT (user_id) DO UPDATE SET 
-				total_points = user_results.total_points + $2`
+	//query := `INSERT INTO user_results (user_id,total_points) VALUES ($1, $2)
+	//		ON CONFLICT (user_id) DO UPDATE SET
+	//			total_points = user_results.total_points + $2`
 
-	_, err := q.Pool.Exec(ctx, query, userResult.UserID, userResult.TotalPoints)
+	query := `INSERT INTO user_results (user_id,points,questions_id) VALUES ($1, $2, $3)`
+
+	_, err := q.Pool.Exec(ctx, query, userResult.UserID, userResult.Points, userResult.QuestionID)
 	return err
 }
 
-func (q *quizRepo) GetAllUserResults(ctx context.Context) ([]entity.UserResult, error) {
-	query := `SELECT u.tg_username,user_results.user_id,user_results.id, user_results.total_points FROM user_results
-					JOIN "user" u on u.id = user_results.user_id`
+func (q *quizRepo) GetAllUserResultsByChannelID(ctx context.Context, channelID int) ([]entity.UserResult, error) {
+	query := `SELECT
+    u.tg_username,
+    user_results.user_id,
+    user_results.id,
+    user_results.points,
+	q.question_name
+	FROM user_results
+			 JOIN "user" u
+				  ON u.id = user_results.user_id
+			 JOIN questions q on user_results.questions_id = q.id
+			 JOIN channel c on q.channel_tg_id = c.tg_id
+			WHERE c.tg_id = $1;`
 
-	rows, err := q.Pool.Query(ctx, query)
+	rows, err := q.Pool.Query(ctx, query, channelID)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +355,7 @@ func (q *quizRepo) GetAllUserResults(ctx context.Context) ([]entity.UserResult, 
 	var results []entity.UserResult
 	for rows.Next() {
 		var result entity.UserResult
-		err := rows.Scan(&result.TGUsername, &result.UserID, &result.ID, &result.TotalPoints)
+		err := rows.Scan(&result.TGUsername, &result.UserID, &result.ID, &result.Points, &result.QuestionName)
 		if err != nil {
 			return nil, err
 		}
@@ -317,10 +368,14 @@ func (q *quizRepo) GetAllUserResults(ctx context.Context) ([]entity.UserResult, 
 	return results, nil
 }
 
-func (q *quizRepo) ResetAllUserResult(ctx context.Context) error {
-	query := `UPDATE user_results SET total_points = 0`
+func (q *quizRepo) ResetAllUserResult(ctx context.Context, channelTgID int) error {
+	query := `UPDATE user_results
+			SET points = 0
+			FROM questions q
+					 JOIN channel c ON q.channel_tg_id = c.tg_id
+			WHERE user_results.questions_id = q.id AND c.tg_id = $1;`
 
-	_, err := q.Pool.Exec(ctx, query)
+	_, err := q.Pool.Exec(ctx, query, channelTgID)
 	return err
 }
 

@@ -205,7 +205,6 @@ func (b *Bot) Run(ctx context.Context) {
 	newBot.RegisterCommandCallback("admin_set_role", middleware.AdminMiddleware(b.userService, b.callbackUser.AdminSetRole()))
 
 	// callback quiz domain
-	newBot.RegisterCommandCallback("quiz_setting", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackShowQuizSetting()))
 	newBot.RegisterCommandCallback("create_question", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackCreateQuizQuestion()))
 	newBot.RegisterCommandCallback("list_question", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackListQuestion()))
 	newBot.RegisterCommandCallback("question_get", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackGetQuestion()))
@@ -214,15 +213,18 @@ func (b *Bot) Run(ctx context.Context) {
 	newBot.RegisterCommandCallback("quiz_check", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackCheckQuiz()))
 	newBot.RegisterCommandCallback("add_answers", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackCreateAnswer()))
 	newBot.RegisterCommandCallback("quiz_answer", b.callbackQuiz.CallbackUserResponse()) // без middleware
-	newBot.RegisterCommandCallback("show_channels", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackShowChannels()))
-	// todo по хорошему вынести в другую область предметную
-	newBot.RegisterCommandCallback("channel_get", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackSendQuizToChannel()))
+	//todo по хорошему вынести в другую область предметную
 	newBot.RegisterCommandCallback("add_image", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackAddImage()))
 	newBot.RegisterCommandCallback("update_question", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackUpdateQuestion()))
 	newBot.RegisterCommandCallback("cancel_update", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackCancelUpdate()))
 	newBot.RegisterCommandCallback("update_answers", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackUpdateAnswers()))
 	newBot.RegisterCommandCallback("downloading_rating", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackGetUserResultExcelFile()))
 	newBot.RegisterCommandCallback("reset_rating", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackResetRating()))
+	newBot.RegisterCommandCallback("send_question", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackSendQuizToChannel()))
+
+	//v2
+	newBot.RegisterCommandCallback("list_channelsv2", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackGetChannelsV2()))
+	newBot.RegisterCommandCallback("channel_get", middleware.AdminMiddleware(b.userService, b.callbackQuiz.CallbackGetChannelSettingV2()))
 
 	b.log.Info("Initialize bot took [%f] seconds", time.Since(startBot).Seconds())
 	if err := newBot.Run(ctx); err != nil {

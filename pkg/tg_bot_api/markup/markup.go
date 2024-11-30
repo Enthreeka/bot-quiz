@@ -9,7 +9,7 @@ import (
 var (
 	StartMenu = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Управление ботом", "quiz_setting")),
+			tgbotapi.NewInlineKeyboardButtonData("Управление ботом", "list_channelsv2")),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Управление пользователями", "user_setting")),
 	)
@@ -24,24 +24,28 @@ var (
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Посмотреть список администраторов", "admin_look_up"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Скачать рейтинг", "downloading_rating")),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Обнулить рейтинг", "reset_rating")),
 		tgbotapi.NewInlineKeyboardRow(button.MainMenuButton),
-	)
-
-	QuizSetting = tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Создать вопрос", "create_question")),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Открыть список вопросов", "list_question")),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Удалить вопрос", "delete_question")),
 	)
 
 	MainMenu = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(button.MainMenuButton))
 )
+
+func QuizSettingV2(channelID int64) tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Создать вопрос", fmt.Sprintf("create_question_%d", channelID))),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Открыть список вопросов", fmt.Sprintf("list_question_%d", channelID))),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Удалить вопрос", fmt.Sprintf("delete_question_%d", channelID))),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Скачать рейтинг", fmt.Sprintf("downloading_rating_%d", channelID))),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Обнулить рейтинг", fmt.Sprintf("reset_rating_%d", channelID))),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Вернуться назад", fmt.Sprintf("list_channelsv2"))),
+	)
+}
 
 func QuestionSetting(questionID int) tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(
@@ -56,9 +60,9 @@ func QuestionSetting(questionID int) tgbotapi.InlineKeyboardMarkup {
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Предварительный просмотр", fmt.Sprintf("quiz_check_%d", questionID))),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Выбрать канал и отправить вопрос", fmt.Sprintf("show_channels_%d", questionID))),
+			tgbotapi.NewInlineKeyboardButtonData("Отправить вопрос в канал", fmt.Sprintf("send_question_%d", questionID))),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Вернуться назад", "quiz_setting")),
+			tgbotapi.NewInlineKeyboardButtonData("Вернуться назад", "list_channelsv2")),
 	)
 }
 

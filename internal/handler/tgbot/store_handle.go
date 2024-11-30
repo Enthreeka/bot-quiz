@@ -43,7 +43,7 @@ func (b *Bot) switchStoreData(ctx context.Context, update *tgbotapi.Update, stor
 
 	case store.QuizCreate:
 		if _, err = b.quizService.CreateQuestion(ctx, nil, &entity.Question{QuestionName: coverter.ConvertToMarkdownV2(update.Message.Text, update.Message.Entities),
-			CreatedByUser: update.FromChat().ID}); err != nil {
+			CreatedByUser: update.FromChat().ID, ChannelID: int64(storeData.ChannelID)}); err != nil {
 			b.log.Error("isStoreExist::store.QuizCreate:CreateQuestion: %v", err)
 		}
 	case store.QuizUpdateAnswer:
@@ -61,7 +61,7 @@ func (b *Bot) switchStoreData(ctx context.Context, update *tgbotapi.Update, stor
 			b.log.Error("isStoreExist::store.QuizUpdateQuestion: %v", err)
 		}
 	case store.QuizUpdateOldAnswer:
-		if err = b.quizService.QuizUpdateOldAnswer(ctx, coverter.ConvertToMarkdownV2(update.Message.Text, update.Message.Entities), storeData.QuestionID); err != nil {
+		if err = b.quizService.QuizUpdateOldAnswer(ctx, update.Message.Text, storeData.QuestionID); err != nil {
 			b.log.Error("isStoreExist::store.QuizUpdateQuestion: %v", err)
 		}
 	default:

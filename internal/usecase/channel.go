@@ -18,8 +18,9 @@ type ChannelService interface {
 
 	GetByID(ctx context.Context, id int) (*entity.Channel, error)
 	GetAll(ctx context.Context) ([]entity.Channel, error)
-	GetAllAdminChannel(ctx context.Context, questionID int) (*tgbotapi.InlineKeyboardMarkup, error)
+	GetAllAdminChannel(ctx context.Context, questionID ...any) (*tgbotapi.InlineKeyboardMarkup, error)
 	GetByChannelName(ctx context.Context, channelName string) (*entity.Channel, error)
+	GetByChannelID(ctx context.Context, channelID int64) (*entity.Channel, error)
 
 	DeleteByID(ctx context.Context, id int) error
 	ChatMember(ctx context.Context, channel *entity.Channel) error
@@ -42,6 +43,10 @@ func NewChannelService(channelRepo repo.ChannelRepo, log *logger.Logger) (Channe
 		channelRepo: channelRepo,
 		log:         log,
 	}, nil
+}
+
+func (c *channelService) GetByChannelID(ctx context.Context, channelID int64) (*entity.Channel, error) {
+	return c.channelRepo.GetByChannelID(ctx, channelID)
 }
 
 func (c *channelService) Create(ctx context.Context, channel *entity.Channel) error {
@@ -86,13 +91,55 @@ func (c *channelService) ChatMember(ctx context.Context, channel *entity.Channel
 	return nil
 }
 
-func (c *channelService) GetAllAdminChannel(ctx context.Context, questionID int) (*tgbotapi.InlineKeyboardMarkup, error) {
+func (c *channelService) GetAllAdminChannel(ctx context.Context, questionID ...any) (*tgbotapi.InlineKeyboardMarkup, error) {
 	channel, err := c.channelRepo.GetAllAdminChannel(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.createChannelMarkup(channel, "get", questionID)
+	var (
+		markup       *tgbotapi.InlineKeyboardMarkup
+		isQuestionID bool
+	)
+
+	if questionID != nil {
+		if val, ok := questionID[0].(int); ok {
+			if val != 0 {
+				markup, err = c.createChannelMarkup(channel, "get", val)
+				isQuestionID = true
+			}
+		}
+	}
+
+	if !isQuestionID {
+		markup, err = c.createChannelMarkupV2(channel, "get")
+	}
+
+	return markup, err
+}
+
+func (c *channelService) createChannelMarkupV2(channel []entity.Channel, command string) (*tgbotapi.InlineKeyboardMarkup, error) {
+	var rows [][]tgbotapi.InlineKeyboardButton
+	var row []tgbotapi.InlineKeyboardButton
+
+	buttonsPerRow := 1
+	for i, el := range channel {
+
+		btn := tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%s", el.ChannelName),
+			fmt.Sprintf("channel_%s_%d", command, el.TgID))
+
+		row = append(row, btn)
+
+		if (i+1)%buttonsPerRow == 0 || i == len(channel)-1 {
+			rows = append(rows, row)
+			row = []tgbotapi.InlineKeyboardButton{}
+		}
+	}
+
+	rows = append(rows, []tgbotapi.InlineKeyboardButton{button.MainMenuButton})
+	markup := tgbotapi.NewInlineKeyboardMarkup(rows...)
+
+	return &markup, nil
 }
 
 func (c *channelService) createChannelMarkup(channel []entity.Channel, command string, questionID int) (*tgbotapi.InlineKeyboardMarkup, error) {

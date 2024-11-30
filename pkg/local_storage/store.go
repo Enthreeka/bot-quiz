@@ -15,6 +15,7 @@ type Data struct {
 	CurrentMsgID  int
 
 	QuestionID int
+	ChannelID  int
 }
 
 func NewStore() *Store {
