@@ -334,16 +334,18 @@ func (q *quizRepo) CreateUserResult(ctx context.Context, userResult *entity.User
 
 func (q *quizRepo) GetAllUserResultsByChannelID(ctx context.Context, channelID int) ([]entity.UserResult, error) {
 	query := `SELECT
-    u.tg_username,
-    user_results.user_id,
-    user_results.id,
-    user_results.points,
-	q.question_name
-	FROM user_results
-			 JOIN "user" u
-				  ON u.id = user_results.user_id
-			 JOIN questions q on user_results.questions_id = q.id
-			 JOIN channel c on q.channel_tg_id = c.tg_id
+				u.tg_username,
+				user_results.user_id,
+				user_results.id,
+				user_results.points,
+				q.question_name,
+				a.answer
+			FROM user_results
+					 JOIN "user" u
+						  ON u.id = user_results.user_id
+					 JOIN questions q on user_results.questions_id = q.id
+					 JOIN channel c on q.channel_tg_id = c.tg_id
+					 JOIN public.answers a on user_results.questions_id = a.question_id and user_results.points = a.cost_of_response
 			WHERE c.tg_id = $1;`
 
 	rows, err := q.Pool.Query(ctx, query, channelID)
@@ -355,7 +357,7 @@ func (q *quizRepo) GetAllUserResultsByChannelID(ctx context.Context, channelID i
 	var results []entity.UserResult
 	for rows.Next() {
 		var result entity.UserResult
-		err := rows.Scan(&result.TGUsername, &result.UserID, &result.ID, &result.Points, &result.QuestionName)
+		err := rows.Scan(&result.TGUsername, &result.UserID, &result.ID, &result.Points, &result.QuestionName, &result.Answer)
 		if err != nil {
 			return nil, err
 		}

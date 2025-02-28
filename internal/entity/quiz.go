@@ -34,6 +34,8 @@ type UserResult struct {
 	TGUsername string `json:"tg_username"`
 
 	QuestionName string `json:"question_name"`
+
+	Answer string `json:"answer"`
 }
 
 type Quiz struct {
